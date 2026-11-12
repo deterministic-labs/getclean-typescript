@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The version package.json names under packageManager.
+  PNPM_VERSION: 10.33.0
+
+jobs:
+  test:
+    name: Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["20", "22", "24", "26"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Install pnpm
+        run: npm install -g "pnpm@${PNPM_VERSION}"
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm run check
+      - name: Build
+        run: pnpm run build
+      - name: Load the built package as a user does
+        # From a folder outside the tree, once as an ES module and once as CommonJS, since the tests import the sources
+        # and nothing else loads the built files.
+        run: |
+          cd "$(mktemp -d)"
+          node --input-type=module -e "import('$GITHUB_WORKSPACE/dist/esm/index.mjs').then((m) => { if (typeof m.GetClean !== 'function') { console.error('the ES module build exports no GetClean class'); process.exit(1); } }, (error) => { console.error('the ES module build does not load: ' + error.message); process.exit(1); })"
+          node -e "const m = require('$GITHUB_WORKSPACE/dist/cjs/index.js'); if (typeof m.GetClean !== 'function') { console.error('the CommonJS build exports no GetClean class'); process.exit(1); }"
+      - name: Type-check the tests
+        run: pnpm exec tsc --noEmit -p tests/tsconfig.json
+      - name: Test
+        run: pnpm run test --run
