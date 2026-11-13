@@ -93,7 +93,8 @@ jobs:
       # token is stored and no flag is needed. The package is unscoped, so it is public. This job installs nothing and
       # builds nothing: it publishes the packed file the build job made.
       - name: Publish
-        run: npm publish package/*.tgz
+        # The leading ./ makes npm read the argument as a file; a bare folder/file form reads as a GitHub shorthand.
+        run: npm publish ./package/*.tgz
 
   release:
     name: Create the GitHub release
